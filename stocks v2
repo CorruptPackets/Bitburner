@@ -1,0 +1,146 @@
+/** @param {NS} ns **/
+export async function main(ns) {
+	var currency = new Intl.NumberFormat('en-US', {
+		style: 'currency',
+		currency: 'USD',
+
+	})
+
+	ns.disableLog('disableLog');
+	ns.disableLog('sleep');
+	ns.disableLog('getServerMoneyAvailable');
+	let symbols = ns.stock.getSymbols()
+	let portfolio = []
+	let pos = 0
+	let bidPrice = 0
+	let loop = 0
+	let i = 0
+	let source = new Array()
+	let sellAmount = 0
+	let total = Number(0)
+	let sum = Number(0)
+
+	for (i = 0; i < symbols.length; i++) {
+		portfolio[i] = new Array()
+		//Adding Symbols to array
+		portfolio[i].unshift(symbols[i])
+		pos = ns.stock.getPosition(symbols[i])
+		//Adding owned stocks to array
+		portfolio[i].push(pos[0])
+		//Adding average stock cost
+		portfolio[i].push(pos[1])
+		//Adding forcast to array
+		portfolio[i].push(.5)
+		//Adding counter to array
+		portfolio[i].push(0)
+		
+	}
+	//ns.tprint(portfolio)
+	while (true) {
+		
+		for (i = 0; i < portfolio.length; i++) {
+			pos = ns.stock.getPosition(portfolio[i][0])
+			sum = pos[0] * ns.stock.getBidPrice(portfolio[i][0])
+			total = total + sum
+			ns.tprint(portfolio[i][0] + " " + portfolio[i][1] + " " + portfolio[i][4] + "   adding: " + currency.format(sum))
+			sum = 0
+		}
+		total = total + ns.getServerMoneyAvailable("home")
+		ns.tprint(currency.format(total))
+		total = 0
+		source = []
+		//Forecasting
+		loop = 0
+		while (loop < 18) {
+			//ns.tprint("Loop " + loop)
+			for (i = 0; i < portfolio.length; i++) {
+				bidPrice = ns.stock.getBidPrice(portfolio[i][0])
+				pos = ns.stock.getPosition(portfolio[i][0])
+				portfolio[i][1] = pos[0]
+				portfolio[i][2] = pos[1]
+				//Verify at least 1 stock owned
+				if (portfolio[i][1] === 0) {
+					ns.stock.buy(portfolio[i][0], 1)
+					//ns.tprint("Buy" + i)
+					}
+				//Growth
+				if (bidPrice > portfolio[i][2]) {
+					portfolio[i][3] = portfolio[i][3] + .01
+					//ns.tprint(portfolio[i][0] + " " + portfolio[i][3])
+				}
+				//Same
+				else if (bidPrice == portfolio[i][2]) {
+					await ns.sleep(100)
+					//ns.tprint("average price same" + currency.format(pos[1]) + " " + currency.format(portfolio[i][2]))
+				}
+				//Shrink
+				else if (bidPrice < portfolio[i][2]) {
+					portfolio[i][3] = portfolio[i][3] - .01
+					//ns.tprint(portfolio[i][0] + " " + portfolio[i][3])
+				}
+				portfolio[i][2] = bidPrice
+				//ns.tprint(portfolio[i])
+			}
+			
+			
+			await ns.sleep(6000)
+			loop++
+		}
+		//Sorting Forcast
+		portfolio.sort( function (a,b) { return b[3] - a[3] } )
+		//ns.tprint(portfolio)
+		source = portfolio.slice(0,3)
+		//ns.tprint("Source " + source)
+
+	for (i = 0; i < source.length; i++) {
+		ns.tprint("Buy Loop " + portfolio[i][0])
+		let maxShares = ns.stock.getMaxShares(portfolio[i][0]) * .01
+		ns.tprint("Max Shares: " + maxShares)
+		let spendMoney = ns.getServerMoneyAvailable("home") * 0.25
+		let stockPrice = source[i][2]
+		let shareAmount = Math.floor(spendMoney / stockPrice)
+		if (maxShares > shareAmount){
+			ns.stock.buy(source[i][0], shareAmount)
+			ns.tprint("Buying from shareAmount")
+		}
+		else {
+			ns.stock.buy(source[i][0], maxShares)
+			ns.tprint("Buying from maxShares")
+		}
+		
+		}
+		ns.tprint("portfolio " + portfolio)
+		ns.tprint("Source " + source)
+	for (i = 0; i < portfolio.length; i++) {
+		pos = ns.stock.getPosition(portfolio[i][0])
+		portfolio[i][1] = pos[0]
+		portfolio[i][2] = pos[1]
+		portfolio[i][3] = .5
+		}
+
+	for (i = 0; i < symbols.length; i++) {
+		if (portfolio[i][1] > 1) {
+			//ns.tprint("Sell Loop " + portfolio[i][0])
+			pos = ns.stock.getPosition(portfolio[i][0])
+			bidPrice = ns.stock.getBidPrice(portfolio[i][0])
+			let sellThreshold = pos[1] * 1.05
+			portfolio[i][4]++
+			ns.tprint("counter " + portfolio[i][4])
+			if (bidPrice > sellThreshold || portfolio[i][4] > 4) {
+					sellAmount = portfolio[i][1] - 1
+					
+					ns.tprint("Selling Stock " + portfolio[i][0] + " " + sellAmount)
+					//ns.tprint("Selling Shares", symbols[i][0] + " " + sellAmount)
+					ns.stock.sell(portfolio[i][0], sellAmount)
+					portfolio[i][4] = 0
+					ns.tprint("Zeroing Counter " + portfolio[i][4])
+					
+					await ns.sleep(500,false)
+				}
+				//ns.tprint("looping")
+				await ns.sleep(100,false)
+			}
+	
+	}
+	}
+}
