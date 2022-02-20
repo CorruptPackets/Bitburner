@@ -1,0 +1,153 @@
+/** @param {NS} ns **/
+export async function main(ns) {
+	var currency = new Intl.NumberFormat('en-US', {
+		style: 'currency',
+		currency: 'USD',
+	})
+
+	ns.disableLog('disableLog');
+	ns.disableLog('sleep');
+	ns.disableLog('getServerMoneyAvailable');
+	let symbols = ns.stock.getSymbols()
+	let portfolio = []
+	let pos = 0
+	let askPrice = 0
+	let i = 0
+	let sellAmount = 0
+	let total = Number(0)
+	let sum = Number(0)
+	let sellmem = 0
+	let onePercent = 0
+	let maxStock = 0
+
+	for (i = 0; i < symbols.length; i++) {
+		portfolio[i] = new Array()
+		//Adding Symbols to array [0]
+		portfolio[i].unshift(symbols[i])
+		pos = ns.stock.getPosition(symbols[i])
+		//Adding owned stocks to array [1]
+		portfolio[i].push(pos[0])
+		//Adding average stock cost [2]
+		portfolio[i].push(pos[1])
+		//Adding Growth to array [3]
+		portfolio[i].push(5)
+		//Adding Shrink to array [4]
+		portfolio[i].push(5)
+		//Adding costs [5]
+		portfolio[i].push(0)
+
+	}
+
+
+
+	
+	while (true) {
+		//Total money at begining of loop
+		for (i = 0; i < portfolio.length; i++) {
+			pos = ns.stock.getPosition(portfolio[i][0])
+			sum = pos[0] * ns.stock.getBidPrice(portfolio[i][0])
+			total = total + sum
+			ns.tprint(portfolio[i][0] + " Owned: " + portfolio[i][1]  + " Grow: " + portfolio[i][3]   + " Shrink: " + portfolio[i][4])
+			sum = 0
+		}
+		total = total + ns.getServerMoneyAvailable("home")
+		ns.tprintf('INFO' + " Total money including stocks: " + currency.format(total))
+		total = 0
+		
+		//Forecasting
+		for (i = 0; i < portfolio.length; i++) {
+			askPrice = ns.stock.getAskPrice(portfolio[i][0])
+			pos = ns.stock.getPosition(portfolio[i][0])
+			portfolio[i][1] = pos[0]
+			portfolio[i][2] = pos[1]
+			//Verify at least 1 stock owned
+			if (portfolio[i][1] === 0) {
+				ns.stock.buy(portfolio[i][0], 1)
+				
+			}
+			//Growth
+			if (askPrice > portfolio[i][2]) {
+				portfolio[i][3] = portfolio[i][3] + 1
+				portfolio[i][4] = 5
+			
+			}
+			//Same
+			else if (askPrice == portfolio[i][2]) {
+				await ns.sleep(100)
+				
+			}
+			//Shrink
+			else if (askPrice < portfolio[i][2]) {
+				portfolio[i][3] = 5
+				portfolio[i][4] = portfolio[i][4] - 1
+				
+			}
+			portfolio[i][2] = askPrice
+
+		}
+		
+		await ns.sleep(6000)
+
+		//Buy Loop
+		for (i = 0; i < portfolio.length; i++) {
+			if (portfolio[i][3] > 10) {
+				ns.tprint("Buy Loop " + portfolio[i][0])
+				//Spend 25% of savings
+				let spendMoney = ns.getServerMoneyAvailable("home") * 0.25
+				//Find ask price of stock
+				askPrice = ns.stock.getAskPrice(portfolio[i][0])
+				maxStock = ns.stock.getMaxShares(portfolio[i][0])
+				onePercent = maxStock * .01
+				//reseting counters
+				portfolio[i][3] = 5
+				portfolio[i][4] = 5
+				//Calculate shares to purchase
+				let shareAmount = Math.floor(spendMoney / askPrice)
+				ns.tprint("Share Ammount: " + shareAmount)
+				//Prevent death by commision
+				if (onePercent < shareAmount) {
+					//portfolio[i][5] = Math.floor(spendMoney)
+					ns.stock.buy(portfolio[i][0], onePercent)
+					ns.tprint("Buying from One Percent")
+
+				}
+				else if (shareAmount > 5){
+					//Buy the stocks
+					//portfolio[i][5] = Math.floor(spendMoney)
+					ns.stock.buy(portfolio[i][0], shareAmount)
+					ns.tprint("Buying from shareAmount")
+					}
+				//Error Check
+				else{
+					ns.tprintf('ERROR ' + "Purchase failed, not enough money or tried to purchase too few stocks.")
+				}
+				
+				await ns.sleep(100, false)
+
+			}
+		}
+
+		//Sell Loop
+		for (i = 0; i < portfolio.length; i++) {
+			//checking that more than 1 share has been purchased
+			if (portfolio[i][1] > 1) {
+				//Checking counter to see if we sell
+				if (portfolio[i][4] < 4) {
+					sellAmount = portfolio[i][1] - 1
+					ns.tprint("Selling Stock " + portfolio[i][0])
+					sellmem = ns.stock.sell(portfolio[i][0], sellAmount)
+					portfolio[i][5] = (portfolio[i][5] - sellmem)
+					ns.tprintf('INFO ' + portfolio[i][5])
+					portfolio[i][3] = 5
+					portfolio[i][4] = 5
+					await ns.sleep(100, false)
+					
+				}
+				//ns.tprint("looping")
+				await ns.sleep(100, false)
+
+			}
+
+		}
+	}
+}
